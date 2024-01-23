@@ -5,15 +5,14 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./Addresses.sol";
 import "../interfaces/ILifi.sol";
 
-
-library SwapHelper{
+library SwapHelper {
 
 
     function swapLifi(bool sendsEth, address sendingAssetId, bytes calldata _swapData) internal returns (uint){
         return _swapLifi(sendsEth, sendingAssetId, _swapData);
     }
 
-    function _swapLifi(bool sendsEth, address sendingAssetId, bytes calldata _swapData) internal returns (uint){
+    function _swapLifi(bool sendsEth, address sendingAssetId, bytes calldata _swapData) internal returns (uint changedAmount){
         (
             bytes32 _transactionId,
             string memory _integrator,
@@ -49,6 +48,7 @@ library SwapHelper{
             IERC20(sendingAssetId).approve(Addresses.lifiDiamondAddress, _swapsData[0].fromAmount);
             sendEthAmount = 0;
         }
+
         ILifi(Addresses.lifiDiamondAddress).swapTokensGeneric{value: sendEthAmount}(
             _transactionId,
             _integrator,

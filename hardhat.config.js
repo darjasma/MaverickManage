@@ -15,9 +15,12 @@ module.exports = {
   networks:{
     hardhat: {
       forking: {
-        url: process.env.FORKING_URL
-      }
+        // port: 8080,
+        url: process.env.FORKING_URL,
+        timeout: 600000
+      },
     },
+    // timeout: '100000000',
     goerli:{
       url:process.env.GOERLI_RPC_URL,
       accounts: [process.env.GOERLI_PRIVATE_KEY]
@@ -25,7 +28,11 @@ module.exports = {
     mainnet:{
       url: process.env.ETH_RPC_URL,
       accounts: [process.env.MAIN_NET_PRIVATE_KEY]
-    }
+    },
+    localhost: {
+      url: "http://127.0.0.1:8080",
+      timeout: 600000
+    },
   },
 
   etherscan:{
@@ -34,7 +41,7 @@ module.exports = {
     }
   },
 
-  localhost: {
-    url: "http://127.0.0.1:8545"
+  mocha: {
+    timeout: 200000
   }
 }
