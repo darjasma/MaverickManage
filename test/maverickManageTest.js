@@ -1,4 +1,4 @@
-const {expect} = require("chai")
+const {expect, assert} = require("chai")
 const {loadFixture} = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const {ethers} = require("hardhat")
@@ -19,7 +19,9 @@ const IMaverickRewardABI = require('../scripts/ABIs/IMaverickReward.json')
 const IPositionInspectorABI = require('../scripts/ABIs/IPositionInspectorABI.json')
 const veMAVTokenAddress = '0x4949Ac21d5b2A0cCd303C20425eeb29DCcba66D8';
 const MAVTokenAddress = '0x7448c7456a97769F6cD04F1E83A4a23cCdC46aBD';
+const maverickRouterAddress = '0xbBF1EE38152E9D8e3470Dc47947eAa65DcA94913';
 
+const sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay))
 
 
 function parseUnit(number, power) {
@@ -81,7 +83,7 @@ describe("maverickManage test for deposit(stake) and withdraw(unstake) Mav/veMav
             await maverickManage.connect(addr1).deposit(depositDuration, doDelegation, '0x'+swapData.slice(10))
         ).to.changeTokenBalance(wETH, addr1, -ethers.parseEther('1'))
         const veMAV = await ethers.getContractAt(veMAVTokenABI, veMAVTokenAddress);
-        console.log(`veMAV balance after deposit: ${parseUnit(await veMAV.balanceOf(maverickManage), 18)}`);
+        expect(BigInt(await veMAV.balanceOf(maverickManage))).to.be.within(BigInt(7295*10**18), BigInt(7296*10**18));
         //withdraw
 
         // const lockup = await veMAV.lockups(maverickManage, 0);
@@ -94,7 +96,7 @@ describe("maverickManage test for deposit(stake) and withdraw(unstake) Mav/veMav
         expect(
             await maverickManage.connect(addr1).withdraw(0, '0x'+swapData.slice(10))
         ).to.changeTokenBalance(wETH, maverickManage, ethers.parseEther('1'));
-        console.log(`wETH balance after withdraw: ${parseUnit(await wETH.balanceOf(maverickManage),18)}`);
+        expect(await wETH.balanceOf(maverickManage)).to.be.within(BigInt(0.97*10**18), BigInt(10**18));
     }).timeout(200*1000)
 })
 describe("maverickManage test for addLiquidity to polls and removing from them", function () {
@@ -112,8 +114,8 @@ describe("maverickManage test for addLiquidity to polls and removing from them",
         let minTokenAAmount = 0;
         let minTokenBAmount = 0;
         let deadline = (await ethers.provider.getBlock('latest')).timestamp+3600;
-        const daiAddress = '0x6B175474E89094C44Da98b954EedeAC495271d0F';
-        const usdcAddress = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+        // const daiAddress = '0x6B175474E89094C44Da98b954EedeAC495271d0F';
+        // const usdcAddress = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
         let swapDataA, swapDataB;
         // let swapDataA = await getQuote('ETH', 'ETH', 'WETH',daiAddress, ethers.parseEther('1'), await maverickManage.getAddress(),await  maverickManage.getAddress());
         // let swapDataB = await getQuote('ETH', 'ETH', 'WETH',usdcAddress, ethers.parseEther('1'), await maverickManage.getAddress(), await maverickManage.getAddress());
@@ -150,13 +152,12 @@ describe("maverickManage test for addLiquidity to polls and removing from them",
         )
         const wethAfterRemoveLiquidity = await wETH.balanceOf(maverickManage);
         secondReserve = await positionInspector.addressBinReservesAllKindsAllTokenIds(maverickManage, pool);
-        expect(firstReserve[1]-secondReserve[1]).to.equal(70000001);
-        expect(secondReserve[0]-firstReserve[0]).to.be.lessThan(ethers.parseUnits('13'));
-        expect(wethBeforeAddLiquidity-wethAfterAddLiquidity).equals(BigInt(2*10**18))
-        expect(wethAfterRemoveLiquidity-wethAfterAddLiquidity).to.be.within(BigInt(0.009*10**18),  BigInt(0.01*10**18))
+        expect(firstReserve[1]-secondReserve[1]).to.equal(BigInt(70.000001*10**6));
+        expect(firstReserve[0]-secondReserve[0]).to.be.within(BigInt(13*10**18), BigInt(14*10**18));
+        expect(wethBeforeAddLiquidity-wethAfterAddLiquidity).equals(BigInt(2*10**18));
+        expect(wethAfterRemoveLiquidity-wethAfterAddLiquidity).to.be.within(BigInt(0.009*10**18),  BigInt(0.01*10**18));
     }).timeout(2000 * 1000)
     it('is able to addLiquidity to eth-erc20 pool and remove a part of it', async()=>{
-        // console.log(await ethers.provider.getBlockNumber())
         await helpers.reset(forkingUrl, 19071112);
         const {addr1, addr2, maverickManage} = await deployMaverickManageFixture();
         //supply WETH
@@ -208,10 +209,10 @@ describe("maverickManage test for addLiquidity to polls and removing from them",
         )
         const wethAfterRemoveLiquidity = await wETH.balanceOf(maverickManage);
         secondReserve = await positionInspector.addressBinReservesAllKindsAllTokenIds(maverickManage, pool);
-        expect(firstReserve[1]-secondReserve[1]).to.be.greaterThan(ethers.parseUnits('700000',6));
-        expect(firstReserve[0]-secondReserve[0]).to.equal(800000000000001);
+        expect(firstReserve[1]-secondReserve[1]).to.be.greaterThan(BigInt(700000*10**6));
+        expect(firstReserve[0]-secondReserve[0]).to.equal(BigInt(0.000800000000000001*10**18));
         expect(wethBeforeAddLiquidity-wethAfterAddLiquidity).equals(BigInt(1.01*10**18))
-        expect(wethAfterRemoveLiquidity-wethAfterAddLiquidity).equals(BigInt(5048075745))
+        expect(wethAfterRemoveLiquidity-wethAfterAddLiquidity).equals(BigInt(0.000000005048075745*10**18))
     })
     it('is able to addLiquidity to boosted erc20-erc20 pool and remove a part of it', async () => {
         await helpers.reset(forkingUrl, 19072026);
@@ -223,10 +224,11 @@ describe("maverickManage test for addLiquidity to polls and removing from them",
         //addLiquidity parameters
         let poolAddress = '0x050EbE3dbB4B3a3526735B04Cc3D96C80609ee7E'; //gho-usdc
         let tokenId = 0;
-        let params = [[1, 0, true, ethers.parseUnits('4000', 18), ethers.parseUnits('4000', 6)]];
+        let params = [[1, tokenId, true, ethers.parseUnits('4000', 18), ethers.parseUnits('4000', 6)]];
         let minTokenAAmount = 0;
         let minTokenBAmount = 0;
         const usdcAddress = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+        let deadline = (await ethers.provider.getBlock('latest')).timestamp+3600;
         // let swapDataA = await getQuote('ETH', 'ETH', 'WETH', ghoAddress, ethers.parseEther('3'), await maverickManage.getAddress(), await maverickManage.getAddress());
         // let swapDataB = await getQuote('ETH', 'ETH', 'WETH', usdcAddress, ethers.parseEther('3'), await maverickManage.getAddress(), await maverickManage.getAddress());
         // console.log(`SwapDataA:\n${swapDataA}\n\nSwapDataB:\n${swapDataB}\n`);
@@ -240,7 +242,7 @@ describe("maverickManage test for addLiquidity to polls and removing from them",
             params,
             minTokenAAmount,
             minTokenBAmount,
-            usdcAddress,
+            deadline,
             '0x' + swapDataA.slice(10),
             '0x' + swapDataB.slice(10)
         )
@@ -257,7 +259,14 @@ describe("maverickManage test for addLiquidity to polls and removing from them",
         // swapDataA = await getQuote('ETH', 'ETH', ghoAddress, 'WETH', ethers.parseEther('10', 18), await maverickManage.getAddress(), await maverickManage.getAddress());
         // swapDataB = await getQuote('ETH', 'ETH', usdcAddress, 'WETH', ethers.parseUnits('10', 6), await maverickManage.getAddress(), await maverickManage.getAddress())
         // console.log(`SwapDataA:\n${swapDataA}\n\nSwapDataB:\n${swapDataB}\n`);
-        await maverickManage.connect(addr1).claimBoostedPositionRewards(await maverickManage.getAddress(), '0x3bF6412b7e8A4DF2795B5ac3a6283262Fec1FEc1');
+        let _swapDatas = []
+        let swapIncludesETH = [];
+        let rewardTokens = []
+        await maverickManage.connect(addr1).claimBoostedPositionRewards(
+            '0x3bF6412b7e8A4DF2795B5ac3a6283262Fec1FEc1',
+            _swapDatas,
+            swapIncludesETH,
+            rewardTokens);
         swapDataA = '0x4630a0d8f59a2432805ff84db48ea038346008aefe1ca9f61436d63af785fc4dc94efa3900000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001000000000000000000000000009abb5861e3a1edf19c51f8ac74a81782e94f8fdc000000000000000000000000000000000000000000000000000fd2f2b1c71dda0000000000000000000000000000000000000000000000000000000000000160000000000000000000000000000000000000000000000000000000000000000e6d6176657269636b6d616e616765000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002a30783030303030303030303030303030303030303030303030303030303030303030303030303030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000200000000000000000000000001111111254eeb25477b68fb85ed929f73a9605820000000000000000000000001111111254eeb25477b68fb85ed929f73a96058200000000000000000000000040d16fc0246ad3160ccc09b8d0d3a2cd28ae6c2f000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc20000000000000000000000000000000000000000000000008ac7230489e8000000000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000c8e449022e0000000000000000000000000000000000000000000000008ac7230489e80000000000000000000000000000000000000000000000000000000fd32b801b821a00000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000002000000000000000000000000383e7acd889bf57b0d79a584009cb570534ab518800000000000000000000000c7bbec68d12a0d1830360f8ec58fa599ba1b0e9b2e9b3012000000000000000000000000000000000000000000000000'
         swapDataB = '0x4630a0d898d84f6e17869df545c2910f9db4b717a6dc4fc7a211fe2845ea7335dd25431200000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001000000000000000000000000009abb5861e3a1edf19c51f8ac74a81782e94f8fdc0000000000000000000000000000000000000000000000000010107b3fc6dd540000000000000000000000000000000000000000000000000000000000000160000000000000000000000000000000000000000000000000000000000000000e6d6176657269636b6d616e616765000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002a30783030303030303030303030303030303030303030303030303030303030303030303030303030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000200000000000000000000000001111111254eeb25477b68fb85ed929f73a9605820000000000000000000000001111111254eeb25477b68fb85ed929f73a960582000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000c80502b1c5000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800000000000000000000000000000000000000000000000000000000009896800000000000000000000000000000000000000000000000000010107b3fc6dd540000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000100000000000000003b6d0340b4e16d0168e52d35cacd2c6185b44281ec28c9dc2e9b3012000000000000000000000000000000000000000000000000'
         await maverickManage.connect(addr1).removeLiquidity(
@@ -275,9 +284,111 @@ describe("maverickManage test for addLiquidity to polls and removing from them",
         const wethAfterRemoveLiquidity = await wETH.balanceOf(maverickManage);
         secondReserve = await positionInspector.addressBinReservesAllKindsAllTokenIds(maverickManage, pool);
         expect(firstReserve[1]-secondReserve[1]).to.equal(100000001);
-        expect(firstReserve[0]-secondReserve[0]).to.be.greaterThan(41);
+        expect(firstReserve[0]-secondReserve[0]).to.be.within(BigInt(41*10**18), BigInt(42*10**18));
         expect(wethBeforeAddLiquidity-wethAfterAddLiquidity).equals(BigInt(6*10**18))
         expect(wethAfterRemoveLiquidity-wethAfterAddLiquidity).to.be.within(BigInt(0.009*10**18),  BigInt(0.01*10**18))
     });
-})
+    it('is able to addLiquidity to a boosted erc20-eth pool, swap on it so the fee rewards get added to the position', async()=>{
+        //init
+        const {addr1, addr2, maverickManage} = await deployMaverickManageFixture();
+        let addr1Address = await addr1.getAddress(), addr2Address = await addr2.getAddress();
+        const positionInspector = await ethers.getContractAt(IPositionInspectorABI, '0x456A37144162900799f405be34f815dE7C3DA53C');
+        const wETH = await ethers.getContractAt(wETHTokenABI, wETHTokenAddress);
+        const maverickRouter = await ethers.getContractAt(IMaverickRouterABI, maverickRouterAddress)
+        let poolAddress = '0x0eB1C92f9f5EC9D817968AfDdB4B46c564cdeDBe'; //wstETH-ETH
+        let wstETHAddress = '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0'
+        let rewardAddress = '0x78Af919881dc219aFbDD39Ecb7A7b9F840C61797'
+        let wstETH = await ethers.getContractAt(IERC20ABI, wstETHAddress)
+        let reward = await ethers.getContractAt(IMaverickRewardABI, rewardAddress)
+        const bigWstETHHolder = await ethers.getImpersonatedSigner('0x176F3DAb24a159341c0509bB36B833E7fdd0a132')
 
+
+        async function balances(address){
+            let eth = await ethers.provider.getBalance(address);
+            let weth = await wETH.balanceOf(address);
+            let wsteth = await wstETH.balanceOf(address)
+            return {eth: eth, weth: weth, wsteh: wsteth}
+        }
+        //Supply Weth
+        const wETHSupplyAmount = ethers.parseEther('2');
+        expect(await wETH.connect(addr1).deposit({value: wETHSupplyAmount})).to.changeTokenBalance(
+            wETH, addr1, wETHSupplyAmount
+        );
+        expect(await wETH.transfer(maverickManage, wETHSupplyAmount)).to.changeTokenBalances(
+            wETH,[addr1, maverickManage], [-wETHSupplyAmount, wETHSupplyAmount])
+        //addLiquidity
+        let tokenId = 0, kind = 1, isDelta = true, minTokenAAMount = 0, minTokenBAMount = 0;
+        let deltaA = ethers.parseEther('0.5'), deltaB = ethers.parseEther('0.5');
+        let params = [[kind, tokenId, isDelta, deltaA, deltaB]]
+        let swapDataA, swapDataB;
+        let maverickManageAddress = await maverickManage.getAddress()
+        let deadline = (await ethers.provider.getBlock('latest')).timestamp+3600;
+        swapDataA = await getQuote('ETH', 'ETH', 'WETH', 'wstETH',
+                                    ethers.parseEther('1'), maverickManageAddress, maverickManageAddress)
+        swapDataB = await getQuote('ETH', 'ETH', 'WETH', 'ETH',
+                                    ethers.parseEther('1'), maverickManageAddress, maverickManageAddress);
+        expect(await maverickManage.connect(addr1).addLiquidity(
+            true, //includes eth
+            poolAddress,
+            tokenId,
+            params,
+            minTokenAAMount,
+            minTokenBAMount,
+            deadline,
+            '0x'+swapDataA.slice(10),
+            '0x'+swapDataB.slice(10),
+        )).to.changeTokenBalance(wETH, maverickManage, ethers.parseEther('2'));
+        const afterAddLiquidityReserve = await positionInspector.addressBinReservesAllKindsAllTokenIds(maverickManage, poolAddress)
+        assert(afterAddLiquidityReserve[0]===BigInt(0.5*10**18)||afterAddLiquidityReserve[1]===BigInt(0.5*10**18), "Not enough return!")
+        let addLiquidityFilter = maverickManage.filters.AddLiquidity;
+        let events = await maverickManage.queryFilter(addLiquidityFilter, -1);
+        tokenId = events[0].args.receivingTokenId;
+        let binId = events[0].args.binDeltas[0][3];
+        //Making some swaps on the position
+        const wstETHSwapAmount = ethers.parseEther('400')
+        await wstETH.connect(bigWstETHHolder).approve(maverickRouter, wstETHSwapAmount);
+        let beforeFirstSwapBalances = await balances(bigWstETHHolder)
+        expect(await maverickRouter.connect(bigWstETHHolder).exactInputSingle(
+            [
+                wstETHAddress,
+                wETHTokenAddress,
+                poolAddress,
+                bigWstETHHolder,
+                deadline,
+                wstETHSwapAmount,
+                0, //minAIn
+                0, //minBIn
+            ]
+        )).to.changeTokenBalance(wstETH, bigWstETHHolder, -wstETHSwapAmount)
+        let afterFirstSwapBalances = await balances(bigWstETHHolder)
+        expect(afterFirstSwapBalances.wsteh-beforeFirstSwapBalances.wsteh).equals(BigInt(-400*10**18))
+        expect(afterFirstSwapBalances.weth-beforeFirstSwapBalances.weth).within(BigInt(461*10**18), BigInt(462*10**18))//461ETH
+        // let afterFirstSwapReserve = await positionInspector.addressBinReservesAllKindsAllTokenIds(
+        //     maverickManage, poolAddress
+        // )
+        // console.log(afterFirstSwapReserve)
+        expect(await maverickRouter.connect(bigWstETHHolder).exactInputSingle(
+            [
+                wETHTokenAddress,
+                wstETHAddress,
+                poolAddress,
+                bigWstETHHolder,
+                deadline,
+                wstETHSwapAmount,
+                0, //minAIn
+                0, //minBIn
+            ],
+            {value: wstETHSwapAmount}
+        )).to.changeTokenBalance(wstETH, bigWstETHHolder,705)
+        let afterSecondSwapBalances = await balances(bigWstETHHolder)
+        // console.log(afterSecondSwapBalances)
+        expect(afterFirstSwapBalances.eth-afterSecondSwapBalances.eth).within(BigInt(400*10**18), BigInt(400.1e18))
+        expect(afterSecondSwapBalances.wsteh-afterFirstSwapBalances.wsteh).within(BigInt(346*10**18), BigInt(347e18))
+        let afterSecondSwapReserve = await positionInspector.addressBinReservesAllKindsAllTokenIds(
+            maverickManage,
+            poolAddress
+        )
+        expect(afterSecondSwapReserve[0]-afterAddLiquidityReserve[0]).within(BigInt(0.12e18), BigInt(0.13e18))
+        expect(afterSecondSwapReserve[1]-afterAddLiquidityReserve[1]).within(BigInt(-0.14e18), BigInt(-0.13e18))
+    }).timeout(200*1e3)
+})

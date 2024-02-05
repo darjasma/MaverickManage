@@ -12,6 +12,8 @@ import "./interfaces/IMaverickPosition.sol";
 import "./interfaces/IMaverickReward.sol";
 
 
+import "hardhat/console.sol";
+
 contract maverickManage is IERC721Receiver {
     event AddLiquidity(uint256 receivingTokenId,
         uint256 tokenAAmount,
@@ -102,15 +104,19 @@ contract maverickManage is IERC721Receiver {
         if (ethPoolIndex != 1) wethAmount += SwapHelper.swapLifi(false, address(tokenB), _swapDataB);
     }
 
-    function claimBoostedPositionRewards(address account, IMaverickReward rewardContract) external {
-        IMaverickReward.EarnedInfo[] memory earnedInfo = rewardContract.earned(account);
+    function claimBoostedPositionRewards(IMaverickReward rewardContract,
+        bytes[] calldata _swapDatas, bool[] calldata swapIncludesETH, address[] calldata rewardTokens) external {
+        IMaverickReward.EarnedInfo[] memory earnedInfo = rewardContract.earned(address(this));
         uint8 tokenIndex;
         for (uint i = 0; i < earnedInfo.length; i++) {
             if (earnedInfo[i].earned != 0) {
                 tokenIndex = rewardContract.tokenIndex(address(earnedInfo[i].rewardToken));
-                rewardContract.getReward(address(this), tokenIndex);
             }
         }
+        require(_swapDatas.length==swapIncludesETH.length && swapIncludesETH.length==rewardTokens.length,
+            "All the swapIncludesETH, _swapDatas and rewardTokens array should have the same length");
+        for(uint i = 0; i<_swapDatas.length; i++){
+            SwapHelper.swapLifi(swapIncludesETH[i], rewardTokens[i], _swapDatas[i]);
+        }
     }
-
 }
