@@ -5,6 +5,7 @@ import "./helpers/SwapHelper.sol";
 import "./helpers/Addresses.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./interfaces/IveMAV.sol";
 import "./interfaces/IMaverickPool.sol";
 import "./interfaces/IMaverickRouter.sol";
@@ -14,36 +15,45 @@ import "./interfaces/IMaverickReward.sol";
 
 import "hardhat/console.sol";
 
-contract maverickManage is IERC721Receiver {
-    event AddLiquidity(uint256 receivingTokenId,
-        uint256 tokenAAmount,
-        uint256 tokenBAmount,
-        IMaverickPool.BinDelta[] binDeltas);
-
+contract maverickManage is IERC721Receiver, AccessControl {
     IERC20 public utilToken;
+    bytes32 public constant CREATOR_ROLE = keccak256("MINTER_ROLE");
+
+    receive() external payable {}
+
     constructor(address _utilToken){
         utilToken = IERC20(_utilToken);
+        _grantRole(CREATOR_ROLE, msg.sender);
     }
+
+    event AddLiquidity(
+        uint256 receivingTokenId,
+        uint256 tokenAAmount,
+        uint256 tokenBAmount,
+        IMaverickPool.BinDelta[] binDeltas
+    );
+
     function onERC721Received(address, address, uint256, bytes memory) public virtual override returns (bytes4) {
         return this.onERC721Received.selector;
     }
 
-    receive() external payable {}
-
     //@Notice: increasing util token amount in the contract
     //@Param _amount: the amount sender wants to add to the contract
-    function sendUtil(uint _amount) external{
-        utilToken.transferFrom(msg.sender, address(this), _amount); //TODO: Check if the sender should be msg.sender
+    function sendUtil(uint _amount) external onlyRole(CREATOR_ROLE){
+        utilToken.transferFrom(msg.sender, address(this), _amount);
     }
 
     //@Notice: Decreasing util token amount in the contract
-    //@Param: _amount: The amount to send to the _receiver
-    //@Param: _receiver: The address that receives the specified _amount of util token
-    function receiveUtil(uint _amount, address _receiver) external{
-        utilToken.transfer(_receiver, _amount);
+    //@Param _amount: The amount to send to the _receiver
+    function receiveUtil(uint _amount) external onlyRole(CREATOR_ROLE){
+        utilToken.transfer(msg.sender, _amount);
     }
 
-    function swap(bool[] calldata sendsETH, address[] calldata sendingToken, bytes[] calldata _swapsData) external returns(uint[] memory){
+    function swap(bool[] calldata sendsETH, address[] calldata sendingToken, bytes[] calldata _swapsData)
+        external
+        onlyRole(CREATOR_ROLE)
+        returns(uint[] memory)
+    {
         require(
             sendsETH.length == _swapsData.length && _swapsData.length==sendingToken.length,
             "sendsETH, _swapsData, sendingTokens arrays, all should have the same length"
@@ -55,18 +65,16 @@ contract maverickManage is IERC721Receiver {
         return receivedAmounts;
     }
 
-    function deposit(uint duration, bool doDelegation, bytes calldata _swapData) external { //TODO: swapdata removal
-        uint receivedMAV = SwapHelper.swapLifi(false, Addresses.wEthTokenAddress, _swapData);
-        IERC20(Addresses.MAVTokenAddress).approve(Addresses.veMAVTokenAddress, receivedMAV);
-        IveMAV(Addresses.veMAVTokenAddress).stake(receivedMAV, duration, doDelegation);
+    function deposit(uint duration, bool doDelegation, uint depositAmount) external onlyRole(CREATOR_ROLE){
+        IERC20(Addresses.MAVTokenAddress).approve(Addresses.veMAVTokenAddress, depositAmount);
+        IveMAV(Addresses.veMAVTokenAddress).stake(depositAmount, duration, doDelegation);
     }
 
-    function withdraw(uint lockupId, bytes calldata _swapData) external {
+    function withdraw(uint lockupId) external onlyRole(CREATOR_ROLE) {
         IveMAV(Addresses.veMAVTokenAddress).unstake(lockupId);
-        SwapHelper.swapLifi(false, Addresses.MAVTokenAddress, _swapData);
     }
 
-    //@dev: If one side of the pool is eth the address of the token would be WETH token address.
+    //@dev: If one side of the pool is eth, the address of the token would be WETH token address.
     function addLiquidity(
         IMaverickPool pool,
         uint256 tokenId,
@@ -74,7 +82,7 @@ contract maverickManage is IERC721Receiver {
         uint256 minTokenAAmount,
         uint256 minTokenBAmount,
         uint256 deadline
-    ) external payable returns (
+    ) external payable onlyRole(CREATOR_ROLE) returns (
         uint256 receivingTokenId,
         uint256 tokenAAmount,
         uint256 tokenBAmount,
@@ -86,26 +94,19 @@ contract maverickManage is IERC721Receiver {
             tokenARequiredAllowance += params[i].deltaA;
             tokenBRequiredAllowance += params[i].deltaB;
         }
-        uint sendEthAmount = 0;
         IERC20 tokenA = pool.tokenA();
         IERC20 tokenB = pool.tokenB();
         tokenA.approve(Addresses.maverickRouterAddress, tokenARequiredAllowance);
         tokenB.approve(Addresses.maverickRouterAddress, tokenBRequiredAllowance);
-//        console.log(address(tokenA));
-//        console.log(address(tokenB));
-//        console.log(tokenA.allowance(address(this), Addresses.maverickRouterAddress));
-//        console.log(tokenB.allowance(address(this), Addresses.maverickRouterAddress));
         (
             receivingTokenId,
             tokenAAmount,
             tokenBAmount,
             binDeltas
-        ) = IMaverickRouter(Addresses.maverickRouterAddress).addLiquidityToPool{value: sendEthAmount}(
+        ) = IMaverickRouter(Addresses.maverickRouterAddress).addLiquidityToPool(
             pool, tokenId, params, minTokenAAmount, minTokenBAmount, deadline
         );
         emit AddLiquidity(receivingTokenId, tokenAAmount, tokenBAmount, binDeltas);
-//        console.log(tokenA.allowance(address(this), Addresses.maverickRouterAddress));
-//        console.log(tokenB.allowance(address(this), Addresses.maverickRouterAddress));
     }
 
     //@dev: If the pool includes eth, the WETH token would be used instead
@@ -117,7 +118,7 @@ contract maverickManage is IERC721Receiver {
         uint256 minTokenAAmount,
         uint256 minTokenBAmount,
         uint256 deadline
-    ) external returns (uint256 tokenAAmount, uint256 tokenBAmount, IMaverickPool.BinDelta[] memory binDeltas){
+    ) external onlyRole(CREATOR_ROLE) returns (uint256 tokenAAmount, uint256 tokenBAmount, IMaverickPool.BinDelta[] memory binDeltas){
         IMaverickPosition position = IMaverickRouter(Addresses.maverickRouterAddress).position();
         position.approve(Addresses.maverickRouterAddress, tokenId);
         (tokenAAmount, tokenBAmount, binDeltas) = IMaverickRouter(Addresses.maverickRouterAddress).removeLiquidity(
@@ -125,7 +126,7 @@ contract maverickManage is IERC721Receiver {
         );
     }
 
-    function claimBoostedPositionRewards(IMaverickReward rewardContract) external {
+    function claimBoostedPositionRewards(IMaverickReward rewardContract) external onlyRole(CREATOR_ROLE){
         IMaverickReward.EarnedInfo[] memory earnedInfo = rewardContract.earned(address(this));
         uint8 tokenIndex;
         for (uint i = 0; i < earnedInfo.length; i++) {
