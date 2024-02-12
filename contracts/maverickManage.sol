@@ -11,13 +11,22 @@ import "./interfaces/IMaverickPool.sol";
 import "./interfaces/IMaverickRouter.sol";
 import "./interfaces/IMaverickPosition.sol";
 import "./interfaces/IMaverickReward.sol";
-
-
-import "hardhat/console.sol";
+import "./priceOracle/priceFeed.sol";
 
 contract maverickManage is IERC721Receiver, AccessControl {
+    struct tokenOracle{
+        address token;
+        priceFeed oracle;
+    }
+
+    //@notice an IERC20 token for contract I/O
     IERC20 public utilToken;
-    bytes32 public constant CREATOR_ROLE = keccak256("MINTER_ROLE");
+
+    bytes32 public constant CREATOR_ROLE = keccak256("CREATOR_ROLE");
+
+//    address[][2] public tokenOraclePrice;
+//    mapping(address=>priceFeed) public tokenOraclePrice;
+    tokenOracle[] public tokenOracleList;
 
     receive() external payable {}
 
@@ -32,6 +41,43 @@ contract maverickManage is IERC721Receiver, AccessControl {
         uint256 tokenBAmount,
         IMaverickPool.BinDelta[] binDeltas
     );
+
+    //@notice returns contract's TVL using tokens array
+    function getTVL() onlyRole(CREATOR_ROLE) view public returns(uint TVL){
+        TVL = utilToken.balanceOf(address(this));
+        uint32 period = 10;
+        for(uint i=0; i< tokenOracleList.length; i++){
+            TVL += tokenOracleList[i].oracle.estimateAmountOut(
+                tokenOracleList[i].token,
+                uint128(IERC20(tokenOracleList[i].token).balanceOf(address(this))),
+                period
+            );
+        }
+        return TVL;
+    }
+
+    //@notice adding a token to be tracked for getTVL
+    function addTokenTracker(
+        address _factory,
+        address _tokenOut,
+        uint24 _fee
+    ) external onlyRole(CREATOR_ROLE) {
+        priceFeed oracle = new priceFeed(_factory, address(utilToken), _tokenOut, _fee);
+        tokenOracleList.push(tokenOracle(_tokenOut, oracle));
+    }
+
+    //@notice removing a token to not be tracked for getTVL
+    function removeTokenTracker(address tokenOut) external onlyRole(CREATOR_ROLE) {
+        uint i = 0;
+        for(; i<tokenOracleList.length; i++)
+            if(tokenOracleList[i].token==tokenOut) break;
+        if(i==tokenOracleList.length)
+            return;
+        for(uint j=i; j<tokenOracleList.length-1; i++){
+            tokenOracleList[j] = tokenOracleList[j+1];
+        }
+        tokenOracleList.pop();
+    }
 
     function onERC721Received(address, address, uint256, bytes memory) public virtual override returns (bytes4) {
         return this.onERC721Received.selector;
@@ -49,6 +95,7 @@ contract maverickManage is IERC721Receiver, AccessControl {
         utilToken.transfer(msg.sender, _amount);
     }
 
+    //@Notice: Gets a list of swaps ands their constraints and sending them to be executed
     function swap(bool[] calldata sendsETH, address[] calldata sendingToken, bytes[] calldata _swapsData)
         external
         onlyRole(CREATOR_ROLE)
@@ -121,9 +168,10 @@ contract maverickManage is IERC721Receiver, AccessControl {
     ) external onlyRole(CREATOR_ROLE) returns (uint256 tokenAAmount, uint256 tokenBAmount, IMaverickPool.BinDelta[] memory binDeltas){
         IMaverickPosition position = IMaverickRouter(Addresses.maverickRouterAddress).position();
         position.approve(Addresses.maverickRouterAddress, tokenId);
-        (tokenAAmount, tokenBAmount, binDeltas) = IMaverickRouter(Addresses.maverickRouterAddress).removeLiquidity(
-            pool, recipient, tokenId, params, minTokenAAmount, minTokenBAmount, deadline
-        );
+        (tokenAAmount, tokenBAmount, binDeltas) = IMaverickRouter(Addresses.maverickRouterAddress)
+            .removeLiquidity(
+                pool, recipient, tokenId, params, minTokenAAmount, minTokenBAmount, deadline
+            );
     }
 
     function claimBoostedPositionRewards(IMaverickReward rewardContract) external onlyRole(CREATOR_ROLE){
@@ -136,4 +184,6 @@ contract maverickManage is IERC721Receiver, AccessControl {
             }
         }
     }
+
+
 }

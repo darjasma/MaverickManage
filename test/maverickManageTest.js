@@ -284,6 +284,7 @@ describe("maverickManage test for addLiquidity to polls and removing from them",
         let filter = maverickManage.filters.AddLiquidity
         let events = await maverickManage.queryFilter(filter, -1)
         let binId;
+
         tokenId = events[0].args.receivingTokenId;
         binId = events[0].args.binDeltas[0][3];
         await maverickManage.connect(addr1).claimBoostedPositionRewards(
@@ -440,5 +441,31 @@ describe("maverickManage security test", function(){
             maverickManage,
             `AccessControlUnauthorizedAccount`
         );
-    })
-})
+    });
+});
+
+describe("maverickManage read methods test", function(){
+    it("is able to addTokenTracker, removeTokenTracker and getTVL", async()=>{
+        await helpers.reset(forkingUrl, 19212599);
+        const {addr1, addr2, maverickManage} = await deployMaverickManageFixture();
+        //supply WETH
+        const wETH = await ethers.getContractAt(wETHTokenABI, wETHTokenAddress);
+        let wETHSupplyAmount = ethers.parseEther('1.75');
+        await wETH.connect(addr1).deposit({value: wETHSupplyAmount})
+        await wETH.connect(addr1).transfer(maverickManage, wETHSupplyAmount);
+        expect(await maverickManage.getTVL()).equals(BigInt(1.75e18));
+        const factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+        const usdtAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+        const usdt = await ethers.getContractAt(IERC20ABI, usdtAddress);
+        const bigUSDTHolder = await ethers.getImpersonatedSigner('0xF977814e90dA44bFA03b6295A0616a897441aceC');
+        await usdt.connect(bigUSDTHolder).transfer(maverickManage, ethers.parseUnits('2500', 6));
+        await maverickManage.connect(addr1).addTokenTracker(
+            factory, usdtAddress, 3000
+        )
+        expect(await maverickManage.getTVL()).to.be.within(BigInt(2.75e18), BigInt(2.76e18));//1.75 weth and ~1 worth of eth USDT
+        await maverickManage.connect(addr1).removeTokenTracker(
+            usdtAddress
+        )
+        expect(await maverickManage.getTVL()).equals(BigInt(1.75e18));
+    });
+});
