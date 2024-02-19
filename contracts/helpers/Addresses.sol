@@ -7,4 +7,5 @@ library Addresses {
     address public constant veMAVTokenAddress = 0x4949Ac21d5b2A0cCd303C20425eeb29DCcba66D8;
     address public constant MAVTokenAddress = 0x7448c7456a97769F6cD04F1E83A4a23cCdC46aBD;
     address public constant maverickRouterAddress = 0xbBF1EE38152E9D8e3470Dc47947eAa65DcA94913;
+    address public constant maverickPositionInspector = 0x456A37144162900799f405be34f815dE7C3DA53C;
 }

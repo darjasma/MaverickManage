@@ -6,27 +6,26 @@ import "./helpers/Addresses.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import "./interfaces/IveMAV.sol";
 import "./interfaces/IMaverickPool.sol";
 import "./interfaces/IMaverickRouter.sol";
 import "./interfaces/IMaverickPosition.sol";
 import "./interfaces/IMaverickReward.sol";
+import "./interfaces/IMaverickPositionInspector.sol";
 import "./priceOracle/priceFeed.sol";
 
 contract maverickManage is IERC721Receiver, AccessControl {
-    struct tokenOracle{
-        address token;
-        priceFeed oracle;
-    }
+    using EnumerableSet for EnumerableSet.AddressSet;
+
+    EnumerableSet.AddressSet private pools;
+    EnumerableSet.AddressSet private liquidTokens;
+    mapping (address=>priceFeed) private tokenPriceFeed;
 
     //@notice an IERC20 token for contract I/O
-    IERC20 public utilToken;
+    IERC20 public immutable utilToken;
 
     bytes32 public constant CREATOR_ROLE = keccak256("CREATOR_ROLE");
-
-//    address[][2] public tokenOraclePrice;
-//    mapping(address=>priceFeed) public tokenOraclePrice;
-    tokenOracle[] public tokenOracleList;
 
     receive() external payable {}
 
@@ -42,60 +41,96 @@ contract maverickManage is IERC721Receiver, AccessControl {
         IMaverickPool.BinDelta[] binDeltas
     );
 
-    //@notice returns contract's TVL using tokens array
-    function getTVL() onlyRole(CREATOR_ROLE) view public returns(uint TVL){
-        TVL = utilToken.balanceOf(address(this));
-        uint32 period = 10;
-        for(uint i=0; i< tokenOracleList.length; i++){
-            TVL += tokenOracleList[i].oracle.estimateAmountOut(
-                tokenOracleList[i].token,
-                uint128(IERC20(tokenOracleList[i].token).balanceOf(address(this))),
-                period
+    //@notice returns the LP value of this contract in all the pools in terms of utilToken
+    function getLpTVL() public view onlyRole(CREATOR_ROLE) returns (uint _lpTVL){
+        _lpTVL = 0;
+        for(uint i=0; i<pools.length(); i++){
+            IMaverickPool pool = IMaverickPool(pools.at(i));
+            IERC20 tokenA = pool.tokenA();
+            IERC20 tokenB = pool.tokenB();
+            (uint tokenALPBalance, uint tokenBLPBalance) =
+                IMaverickPositionInspector(Addresses.maverickPositionInspector).addressBinReservesAllKindsAllTokenIds(
+                address(this), pool
+            );
+            _lpTVL += (tokenA==utilToken) ? tokenALPBalance : tokenPriceFeed[address(tokenA)].estimateAmountOut(
+                address(tokenA), uint128(tokenALPBalance), 10
+            );
+            _lpTVL += (tokenB==utilToken) ? tokenBLPBalance : tokenPriceFeed[address(tokenB)].estimateAmountOut(
+                address(tokenB), uint128(tokenBLPBalance), 10
             );
         }
-        return TVL;
     }
 
-    //@notice adding a token to be tracked for getTVL
-    function addTokenTracker(
+    //@notice returns the TVL of all the tokens that this contract owns in terms of utilToken
+    function getLiquidTVL() public view onlyRole(CREATOR_ROLE) returns (uint _liquidTVL){
+        _liquidTVL = utilToken.balanceOf(address(this));
+        uint32 period = 10;
+        for(uint i=0; i<liquidTokens.length(); i++){
+            address liquidToken = liquidTokens.at(i);
+            require(address(tokenPriceFeed[liquidToken])!=address(0), "PriceFeed contract doesn't exist");
+            _liquidTVL +=
+                tokenPriceFeed[liquidToken].estimateAmountOut(
+                    liquidToken, uint128(IERC20(liquidToken).balanceOf(address(this))), period
+                );
+        }
+    }
+
+    function getTVL() onlyRole(CREATOR_ROLE) view public returns(uint TVL){
+        TVL = getLpTVL() + getLiquidTVL();
+    }
+
+    //@notice adds the _pool to the set, pools so the the getTvl function keeps track of the _token
+    function addPoolTracker(address _pool) external onlyRole(CREATOR_ROLE) {
+        pools.add(_pool);
+    }
+
+    //@notice removes the _pool form the set, pools so the getTvl stop tracking it
+    function removePoolTracker(address _pool) external onlyRole(CREATOR_ROLE) {
+        pools.remove(_pool);
+    }
+
+    //@notice adds _token to the liquidTokens so it would be tracked by the getTVL
+    function addLiquidTokenTracker(address _token) external onlyRole(CREATOR_ROLE){
+        liquidTokens.add(_token);
+    }
+
+    //@notice remove _token from the liquidTokens so the getTVL stop tracking it
+    function removeLiquidTokenTracker(address _token) external onlyRole(CREATOR_ROLE){
+        liquidTokens.remove(_token);
+    }
+
+    //@notice creates a priceFeed for estimating price of a token in terms of utilToken
+    function addPriceFeed(
         address _factory,
         address _tokenOut,
         uint24 _fee
     ) external onlyRole(CREATOR_ROLE) {
-        priceFeed oracle = new priceFeed(_factory, address(utilToken), _tokenOut, _fee);
-        tokenOracleList.push(tokenOracle(_tokenOut, oracle));
+        priceFeed _priceFeed = new priceFeed(_factory, address(utilToken), _tokenOut, _fee);
+        tokenPriceFeed[_tokenOut] = _priceFeed;
     }
 
-    //@notice removing a token to not be tracked for getTVL
-    function removeTokenTracker(address tokenOut) external onlyRole(CREATOR_ROLE) {
-        uint i = 0;
-        for(; i<tokenOracleList.length; i++)
-            if(tokenOracleList[i].token==tokenOut) break;
-        if(i==tokenOracleList.length)
-            return;
-        for(uint j=i; j<tokenOracleList.length-1; i++){
-            tokenOracleList[j] = tokenOracleList[j+1];
-        }
-        tokenOracleList.pop();
+    //@notice removes a price feed so it's not used anymore for estimating price of a token
+    function removePriceFeed(address _tokenOut) external onlyRole(CREATOR_ROLE){
+        delete tokenPriceFeed[_tokenOut];
     }
 
     function onERC721Received(address, address, uint256, bytes memory) public virtual override returns (bytes4) {
         return this.onERC721Received.selector;
     }
 
-    //@Notice: increasing util token amount in the contract
+    //@notice: increasing util token amount in the contract
     //@Param _amount: the amount sender wants to add to the contract
     function sendUtil(uint _amount) external onlyRole(CREATOR_ROLE){
         utilToken.transferFrom(msg.sender, address(this), _amount);
     }
 
-    //@Notice: Decreasing util token amount in the contract
+    //@notice: Decreasing util token amount in the contract
     //@Param _amount: The amount to send to the _receiver
     function receiveUtil(uint _amount) external onlyRole(CREATOR_ROLE){
         utilToken.transfer(msg.sender, _amount);
     }
 
-    //@Notice: Gets a list of swaps ands their constraints and sending them to be executed
+    //@notice: Gets a list of swaps ands their constraints and sending them to be executed
     function swap(bool[] calldata sendsETH, address[] calldata sendingToken, bytes[] calldata _swapsData)
         external
         onlyRole(CREATOR_ROLE)
@@ -184,6 +219,4 @@ contract maverickManage is IERC721Receiver, AccessControl {
             }
         }
     }
-
-
 }
