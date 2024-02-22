@@ -3,7 +3,7 @@ pragma solidity ^0.8;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-interface IMaverickReward{
+interface IMaverickReward {
     struct EarnedInfo {
         // account
         address account;

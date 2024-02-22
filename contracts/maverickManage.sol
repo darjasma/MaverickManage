@@ -2,25 +2,25 @@
 pragma solidity ^0.8;
 
 import "./helpers/SwapHelper.sol";
-import "./helpers/Addresses.sol";
+import "./helpers/addresses.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
-import "./interfaces/IveMAV.sol";
-import "./interfaces/IMaverickPool.sol";
-import "./interfaces/IMaverickRouter.sol";
-import "./interfaces/IMaverickPosition.sol";
-import "./interfaces/IMaverickReward.sol";
-import "./interfaces/IMaverickPositionInspector.sol";
+import "./interfaces/iveMAV.sol";
+import "./interfaces/iMaverickPool.sol";
+import "./interfaces/iMaverickRouter.sol";
+import "./interfaces/iMaverickPosition.sol";
+import "./interfaces/iMaverickReward.sol";
+import "./interfaces/iMaverickPositionInspector.sol";
 import "./priceOracle/priceFeed.sol";
 
-contract maverickManage is IERC721Receiver, AccessControl {
+contract MaverickManage is IERC721Receiver, AccessControl {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     EnumerableSet.AddressSet private pools;
     EnumerableSet.AddressSet private liquidTokens;
-    mapping (address=>priceFeed) private tokenPriceFeed;
+    mapping (address=>PriceFeed) private tokenPriceFeed;
 
     //@notice an IERC20 token for contract I/O
     IERC20 public immutable utilToken;
@@ -105,7 +105,7 @@ contract maverickManage is IERC721Receiver, AccessControl {
         address _tokenOut,
         uint24 _fee
     ) external onlyRole(CREATOR_ROLE) {
-        priceFeed _priceFeed = new priceFeed(_factory, address(utilToken), _tokenOut, _fee);
+        PriceFeed _priceFeed = new PriceFeed(_factory, address(utilToken), _tokenOut, _fee);
         tokenPriceFeed[_tokenOut] = _priceFeed;
     }
 

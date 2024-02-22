@@ -4,7 +4,7 @@ pragma solidity ^0.8;
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
 import "@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol";
 
-contract priceFeed {
+contract PriceFeed {
     address public immutable token0;
     address public immutable token1;
     address public immutable pool;

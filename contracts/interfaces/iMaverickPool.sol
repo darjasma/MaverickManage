@@ -2,7 +2,7 @@
 pragma solidity ^0.8;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-interface IMaverickPool{
+interface IMaverickPool {
     struct AddLiquidityParams {
         uint8 kind;
         int32 pos;

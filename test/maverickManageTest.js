@@ -45,7 +45,7 @@ async function deployMaverickManageFixture() {
     const swapHelperFactory = await ethers.getContractFactory("SwapHelper");
     const swapHelperInstance = await swapHelperFactory.deploy();
     await swapHelperInstance.waitForDeployment();
-    const maverickManageFactory = await ethers.getContractFactory("maverickManage");
+    const maverickManageFactory = await ethers.getContractFactory("MaverickManage");
     const maverickManage = await maverickManageFactory.deploy('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', addr1);
     await maverickManage.waitForDeployment();
     return {addr1, addr2, maverickManage};
@@ -55,7 +55,10 @@ describe("maverickManage test for deposit(stake) and withdraw(unstake) Mav/veMav
     it("is able to deposit 100MAV and withdraw it after it's duration", async()=>{
         // load fixture
         const {addr1, addr2, maverickManage} = await loadFixture(deployMaverickManageFixture);
-        const maverickManageAddress = await maverickManage.getAddress();
+        let swapData = await getQuote('ETH', 'ETH', 'WETH', 'MAV',
+            ethers.parseEther('0.1'), await maverickManage.getAddress(),await maverickManage.getAddress());
+        let swapData2 = await getQuote('ETH', 'ETH', 'MAV', 'WETH',
+            BigInt(100e18),await maverickManage.getAddress(), await maverickManage.getAddress());
         //supply wETH
         const wETH = await ethers.getContractAt(wETHTokenABI, wETHTokenAddress);
         await expect(
@@ -67,8 +70,6 @@ describe("maverickManage test for deposit(stake) and withdraw(unstake) Mav/veMav
         //deposit wETH on maverickManage and increase the veMAV balance of the contract
         const depositDuration = 20*24*60*60; //20 days(min is one week)
         const doDelegation = false;
-        let swapData = await getQuote('ETH', 'ETH', 'WETH', 'MAV',
-            ethers.parseEther('0.1'), await maverickManage.getAddress(),await maverickManage.getAddress());
         let swapSendsEth = [false];
         let swapsData = ['0x'+swapData.slice(10)];
         let swapSendingTokens = [wETHTokenAddress];
@@ -85,9 +86,8 @@ describe("maverickManage test for deposit(stake) and withdraw(unstake) Mav/veMav
             maverickManage.connect(addr1).withdraw(0)
         ).to.changeTokenBalance(MAV, maverickManage, BigInt(100e18));
         swapSendsEth = [false];
-        swapData = await getQuote('ETH', 'ETH', 'MAV', 'WETH',
-            BigInt(100e18),await maverickManage.getAddress(), await maverickManage.getAddress());
-        swapsData = ['0x'+swapData.slice(10)];
+
+        swapsData = ['0x'+swapData2.slice(10)];
         swapSendingTokens = [MAVTokenAddress];
         await expect(maverickManage.connect(addr1).swap(swapSendsEth, swapSendingTokens, swapsData)).to
             .changeTokenBalance(MAV, maverickManage, BigInt(-100e18));
@@ -95,7 +95,14 @@ describe("maverickManage test for deposit(stake) and withdraw(unstake) Mav/veMav
 })
 describe("maverickManage test for addLiquidity to pools and removing from them", function () {
     it("is able to addLiquidity to an erc20-erc20 pool and remove a part of it", async () => {
-        const {addr1, addr2, maverickManage} = await deployMaverickManageFixture();
+        const {addr1, addr2, maverickManage} = await loadFixture(deployMaverickManageFixture);
+        const daiAddress = '0x6B175474E89094C44Da98b954EedeAC495271d0F';
+        const usdcAddress = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+        let swapDataABeforeAddLiquidity = await getQuote('ETH', 'ETH', 'WETH',daiAddress, ethers.parseEther('1'), await maverickManage.getAddress(),await  maverickManage.getAddress());
+        let swapDataBBeforeAddLiquidity = await getQuote('ETH', 'ETH', 'WETH',usdcAddress, ethers.parseEther('1'), await maverickManage.getAddress(), await maverickManage.getAddress());
+        let swapDataAAfterRemoveLiquidity = await getQuote('ETH', 'ETH',daiAddress, 'WETH', BigInt(30e18), await maverickManage.getAddress(),await  maverickManage.getAddress());
+        let swapDataBAfterRemoveLiquidity = await getQuote('ETH', 'ETH', usdcAddress,'WETH', BigInt(30e6), await maverickManage.getAddress(),await  maverickManage.getAddress());
+
         //supply WETH
         const wETH = await ethers.getContractAt(wETHTokenABI, wETHTokenAddress);
         let wETHSupplyAmount = ethers.parseEther('2');
@@ -110,15 +117,11 @@ describe("maverickManage test for addLiquidity to pools and removing from them",
         let minTokenAAmount = 0;
         let minTokenBAmount = 0;
         let deadline = (await ethers.provider.getBlock('latest')).timestamp+3600;
-        const daiAddress = '0x6B175474E89094C44Da98b954EedeAC495271d0F';
-        const usdcAddress = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
-        let swapDataA = await getQuote('ETH', 'ETH', 'WETH',daiAddress, ethers.parseEther('1'), await maverickManage.getAddress(),await  maverickManage.getAddress());
-        let swapDataB = await getQuote('ETH', 'ETH', 'WETH',usdcAddress, ethers.parseEther('1'), await maverickManage.getAddress(), await maverickManage.getAddress());
         const positionInspector = await ethers.getContractAt(IPositionInspectorABI, '0x456A37144162900799f405be34f815dE7C3DA53C');
         const pool = await ethers.getContractAt(IPoolABI, poolAddress);
         const wethBeforeAddLiquidity = await wETH.balanceOf(maverickManage);
         let swapSendsEth = [false, false];
-        let swapData = ['0x'+swapDataA.slice(10), '0x'+swapDataB.slice(10)];
+        let swapData = ['0x'+swapDataABeforeAddLiquidity.slice(10), '0x'+swapDataBBeforeAddLiquidity.slice(10)];
         let swapSendingTokens = [wETHTokenAddress, wETHTokenAddress];
         await maverickManage.connect(addr1).swap(swapSendsEth, swapSendingTokens, swapData);
         await maverickManage.connect(addr1).addLiquidity(
@@ -141,10 +144,8 @@ describe("maverickManage test for addLiquidity to pools and removing from them",
             0,
             BigInt(1e20),
         )
-        swapDataA = await getQuote('ETH', 'ETH',daiAddress, 'WETH', BigInt(30e18), await maverickManage.getAddress(),await  maverickManage.getAddress());
-        swapDataB = await getQuote('ETH', 'ETH', usdcAddress,'WETH', BigInt(30e6), await maverickManage.getAddress(),await  maverickManage.getAddress());
         swapSendsEth = [false, false];
-        swapData = ['0x'+swapDataA.slice(10), '0x'+swapDataB.slice(10)];
+        swapData = ['0x'+swapDataAAfterRemoveLiquidity.slice(10), '0x'+swapDataBAfterRemoveLiquidity.slice(10)];
         swapSendingTokens = [daiAddress, usdcAddress]
         await maverickManage.connect(addr1).swap(swapSendsEth, swapSendingTokens, swapData)
         const wethAfterRemoveLiquidity = await wETH.balanceOf(maverickManage);
@@ -162,6 +163,9 @@ describe("maverickManage test for addLiquidity to pools and removing from them",
     }).timeout(2000 * 1000)
     it('is able to addLiquidity to eth-erc20 pool and remove a part of it', async()=>{
         const {addr1, addr2, maverickManage} = await loadFixture(deployMaverickManageFixture);
+        const maverickManageAddress = await maverickManage.getAddress()
+        let swapDataB = await getQuote('ETH', 'ETH', 'WETH','MAV', ethers.parseEther('0.01'), maverickManageAddress, maverickManageAddress);
+        let swapDataA = await getQuote('ETH', 'ETH', 'MAV','WETH', ethers.parseEther('0.00002'), maverickManageAddress, maverickManageAddress);
         //supply WETH
         const wETH = await ethers.getContractAt(wETHTokenABI, wETHTokenAddress);
         let wETHSupplyAmount = ethers.parseEther('5');
@@ -177,7 +181,6 @@ describe("maverickManage test for addLiquidity to pools and removing from them",
         let minTokenBAmount = 0;
         let deadline = (await ethers.provider.getBlock('latest')).timestamp+3600;
         const wethBeforeAddLiquidity = await wETH.balanceOf(maverickManage);
-        let swapDataB = await getQuote('ETH', 'ETH', 'WETH','MAV', ethers.parseEther('0.01'), await maverickManage.getAddress(), await maverickManage.getAddress());
         let swapSendsEth = [false];
         let swapData = ['0x'+swapDataB.slice(10)];
         let swapSendingTokens = [wETHTokenAddress]
@@ -204,11 +207,10 @@ describe("maverickManage test for addLiquidity to pools and removing from them",
             0,
             BigInt(1e20)
         )
-        let swapDataA = await getQuote('ETH', 'ETH', 'MAV','WETH', ethers.parseEther('0.00002'), await maverickManage.getAddress(), await maverickManage.getAddress());
         swapData = ['0x'+swapDataA.slice(10)]
         swapSendsEth = [false];
         swapSendingTokens = [MAVTokenAddress];
-        await maverickManage.connect(addr1).swap(swapSendsEth, swapSendingTokens, swapData);
+        // await maverickManage.connect(addr1).swap(swapSendsEth, swapSendingTokens, swapData);
         const wethAfterRemoveLiquidity = await wETH.balanceOf(maverickManage);
         secondReserve = await positionInspector.addressBinReservesAllKindsAllTokenIds(maverickManage, pool);
         expect(firstReserve[1]-secondReserve[1]).to.be.greaterThan(0);
@@ -222,6 +224,12 @@ describe("maverickManage test for addLiquidity to pools and removing from them",
     })
     it('is able to addLiquidity to boosted erc20-erc20 pool and remove a part of it', async () => {
         const {addr1, addr2, maverickManage} = await loadFixture(deployMaverickManageFixture);
+        const usdcAddress = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+        const ghoAddress = '0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f';
+        let swapDataAAddLiq = await getQuote('ETH', 'ETH', 'WETH', ghoAddress, ethers.parseEther('3'), await maverickManage.getAddress(), await maverickManage.getAddress());
+        let swapDataBAddLiq = await getQuote('ETH', 'ETH', 'WETH', usdcAddress, ethers.parseEther('3'), await maverickManage.getAddress(), await maverickManage.getAddress());
+        let swapDataARemoveLiq = await getQuote('ETH', 'ETH', ghoAddress, 'WETH', ethers.parseUnits('10', 18), await maverickManage.getAddress(), await maverickManage.getAddress());
+        let swapDataBRemoveLiq = await getQuote('ETH', 'ETH', usdcAddress, 'WETH', ethers.parseUnits('10', 6), await maverickManage.getAddress(), await maverickManage.getAddress())
         //supply WETH
         const wETH = await ethers.getContractAt(wETHTokenABI, wETHTokenAddress);
         let wETHSupplyAmount = ethers.parseEther('10');
@@ -235,14 +243,10 @@ describe("maverickManage test for addLiquidity to pools and removing from them",
         let params = [[1, tokenId, true, ethers.parseUnits('4000', 18), ethers.parseUnits('4000', 6)]];
         let minTokenAAmount = 0;
         let minTokenBAmount = 0;
-        const usdcAddress = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
-        const ghoAddress = '0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f';
         let deadline = (await ethers.provider.getBlock('latest')).timestamp+3600;
-        let swapDataA = await getQuote('ETH', 'ETH', 'WETH', ghoAddress, ethers.parseEther('3'), await maverickManage.getAddress(), await maverickManage.getAddress());
-        let swapDataB = await getQuote('ETH', 'ETH', 'WETH', usdcAddress, ethers.parseEther('3'), await maverickManage.getAddress(), await maverickManage.getAddress());
         const wethBeforeAddLiquidity = await wETH.balanceOf(maverickManage);
         let swapSendsEth = [false, false];
-        let swapData = ['0x'+swapDataA.slice(10), '0x'+swapDataB.slice(10)];
+        let swapData = ['0x'+swapDataAAddLiq.slice(10), '0x'+swapDataBAddLiq.slice(10)];
         let swapSendingTokens = [wETHTokenAddress, wETHTokenAddress];
         await maverickManage.connect(addr1).swap(swapSendsEth, swapSendingTokens, swapData);
         await maverickManage.connect(addr1).addLiquidity(
@@ -276,10 +280,8 @@ describe("maverickManage test for addLiquidity to pools and removing from them",
             0,
             BigInt(1e20)
         )
-        swapDataA = await getQuote('ETH', 'ETH', ghoAddress, 'WETH', ethers.parseUnits('10', 18), await maverickManage.getAddress(), await maverickManage.getAddress());
-        swapDataB = await getQuote('ETH', 'ETH', usdcAddress, 'WETH', ethers.parseUnits('10', 6), await maverickManage.getAddress(), await maverickManage.getAddress())
         swapSendsEth = [false, false];
-        swapData = ['0x'+swapDataA.slice(10), '0x'+swapDataB.slice(10)];
+        swapData = ['0x'+swapDataARemoveLiq.slice(10), '0x'+swapDataBRemoveLiq.slice(10)];
         swapSendingTokens = [ghoAddress, usdcAddress];
         await maverickManage.connect(addr1).swap(swapSendsEth, swapSendingTokens, swapData);
         const wethAfterRemoveLiquidity = await wETH.balanceOf(maverickManage);
@@ -402,7 +404,7 @@ describe("maverickManage test for addLiquidity to pools and removing from them",
 
 describe("maverickManage security test", function(){
     it('is able to reverts when the caller doesn\'t have the the proper role', async()=>{
-        const {addr1, addr2, maverickManage} = await deployMaverickManageFixture();
+        const {addr1, addr2, maverickManage} = await loadFixture(deployMaverickManageFixture);
         await expect(maverickManage.connect(addr2).sendUtil(100)).to.be.revertedWithCustomError(
             maverickManage,
             `AccessControlUnauthorizedAccount`
@@ -418,6 +420,13 @@ describe("maverickManage read methods test", function(){
     it("is able to getTVL and revert when PriceFeed is not added", async()=>{
         const {addr1, addr2, maverickManage} = await loadFixture(deployMaverickManageFixture);
         const maverickManageAddress = await maverickManage.getAddress();
+        const daiAddress = '0x6B175474E89094C44Da98b954EedeAC495271d0F';
+        const usdcAddress = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+        const swapData1 = await getQuote('ETH','ETH','WETH', 'USDT',
+            BigInt(0.1e18), maverickManageAddress, maverickManageAddress)
+        let swapData2 = await getQuote('ETH', 'ETH', 'WETH',daiAddress, ethers.parseEther('0.1'), await maverickManage.getAddress(),await  maverickManage.getAddress());
+        let swapData3 = await getQuote('ETH', 'ETH', 'WETH',usdcAddress, ethers.parseEther('0.1'), await maverickManage.getAddress(), await maverickManage.getAddress());
+
         //supply WETH
         const wETH = await ethers.getContractAt(wETHTokenABI, wETHTokenAddress);
         let wETHSupplyAmount = ethers.parseEther('1.75');
@@ -428,8 +437,6 @@ describe("maverickManage read methods test", function(){
         const factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984"
         const usdtAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
         const usdt = await ethers.getContractAt(IERC20ABI, usdtAddress);
-        const swapData1 = await getQuote('ETH','ETH','WETH', 'USDT',
-            BigInt(0.1e18), maverickManageAddress, maverickManageAddress)
         await maverickManage.connect(addr1).swap([false], [wETHTokenAddress], ['0x'+swapData1.slice(10)])
         expect(await usdt.balanceOf(maverickManageAddress)).to.not.equal(0);
         await maverickManage.connect(addr1).addLiquidTokenTracker(usdtAddress);
@@ -443,10 +450,6 @@ describe("maverickManage read methods test", function(){
         let minTokenAAmount = 0;
         let minTokenBAmount = 0;
         let deadline = (await ethers.provider.getBlock('latest')).timestamp+3600;
-        const daiAddress = '0x6B175474E89094C44Da98b954EedeAC495271d0F';
-        const usdcAddress = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
-        let swapData2 = await getQuote('ETH', 'ETH', 'WETH',daiAddress, ethers.parseEther('0.1'), await maverickManage.getAddress(),await  maverickManage.getAddress());
-        let swapData3 = await getQuote('ETH', 'ETH', 'WETH',usdcAddress, ethers.parseEther('0.1'), await maverickManage.getAddress(), await maverickManage.getAddress());
         await maverickManage.connect(addr1).addLiquidTokenTracker(daiAddress)
         await maverickManage.connect(addr1).addLiquidTokenTracker(usdcAddress)
         await maverickManage.connect(addr1).addPoolTracker(poolAddress)

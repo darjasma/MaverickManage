@@ -2,8 +2,8 @@
 pragma solidity ^0.8;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./Addresses.sol";
-import "../interfaces/ILifi.sol";
+import "./addresses.sol";
+import "../interfaces/iLifi.sol";
 
 library SwapHelper {
 

@@ -1,10 +1,10 @@
 //SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8;
 
-import "./IMaverickPool.sol";
-import "./IMaverickPosition.sol";
+import "./iMaverickPool.sol";
+import "./iMaverickPosition.sol";
 
-interface IMaverickRouter{
+interface IMaverickRouter {
     struct ExactInputSingleParams {
         address tokenIn;
         address tokenOut;
